@@ -14,7 +14,9 @@ CREATE TYPE estado_doc AS ENUM (
     'pendiente_revision',
     'pendiente_aprobacion', 
     'aprobado',
-    'rechazado'
+    'rechazado',
+    'eliminado',
+    'borrador'
 );
 
 -- Tabla de gestiones
@@ -33,9 +35,13 @@ CREATE TABLE IF NOT EXISTS usuarios (
     id SERIAL PRIMARY KEY,
     nombre VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255),
     rol VARCHAR(50) DEFAULT 'usuario',
     activo BOOLEAN DEFAULT true,
-    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    reset_token VARCHAR(255),
+    reset_token_expires TIMESTAMP,
+    signature_image VARCHAR(255)
 );
 
 -- Tabla principal de documentos
@@ -73,11 +79,13 @@ CREATE TABLE IF NOT EXISTS historico_documentos (
     fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     usuario_id INT REFERENCES usuarios(id),
     comentarios TEXT,
-    accion VARCHAR(100) -- 'creado', 'actualizado', 'revisado', 'aprobado', 'rechazado'
+    accion VARCHAR(100) -- 'creado', 'actualizado', 'revisado', 'aprobado', 'rechazado', 'eliminado'
 );
 
 -- Índices para mejorar rendimiento
 CREATE INDEX IF NOT EXISTS idx_documentos_codigo ON documentos(codigo);
+CREATE INDEX IF NOT EXISTS idx_documentos_nombre ON documentos(nombre);
+CREATE INDEX IF NOT EXISTS idx_documentos_codigo_nombre ON documentos(codigo, nombre);
 CREATE INDEX IF NOT EXISTS idx_documentos_gestion ON documentos(gestion_id);
 CREATE INDEX IF NOT EXISTS idx_documentos_estado ON documentos(estado);
 CREATE INDEX IF NOT EXISTS idx_documentos_convencion ON documentos(convencion);
@@ -151,13 +159,12 @@ SELECT * FROM (VALUES
 ) AS v(nombre, descripcion)
 WHERE NOT EXISTS (SELECT 1 FROM gestiones WHERE nombre = v.nombre);
 
--- Insertar usuarios de ejemplo solo si no existen
--- (Verificar primero si ya tienes usuarios en tu tabla existente)
-INSERT INTO usuarios (nombre, email, rol) 
-SELECT * FROM (VALUES 
-    ('Administrador Docs', 'admin.docs@empresa.com', 'admin'),
-    ('Juan Pérez', 'juan.perez@empresa.com', 'creador'),
-    ('María García', 'maria.garcia@empresa.com', 'revisor'),
-    ('Carlos López', 'carlos.lopez@empresa.com', 'aprobador')
-) AS v(nombre, email, rol)
-WHERE NOT EXISTS (SELECT 1 FROM usuarios WHERE email = v.email);
+-- Crear usuarios por defecto con contraseñas hasheadas (bcrypt)
+-- Contraseña para todos: admin123
+INSERT INTO usuarios (nombre, email, password, rol, activo) VALUES 
+('Administrador Sistema', 'admin.docs@empresa.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin', true),
+('Gerente General', 'gerente@empresa.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'gerente', true),
+('Juan Pérez', 'juan.perez@empresa.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'creador', true),
+('María García', 'maria.garcia@empresa.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'revisor', true),
+('Carlos López', 'carlos.lopez@empresa.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'aprobador', true)
+ON CONFLICT (email) DO NOTHING;

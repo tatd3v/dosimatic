@@ -1,5 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
-
+import '../global/global_constantes.dart';
 import '../models/contact_model.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -10,7 +10,7 @@ class ContactService {
     return prefs.getString('auth_token');
   }
 
-  static const String baseUrl = 'http://localhost:3500/api';
+  static String get baseUrl => '${Constants.serverapp}/api';
 
   static const String token =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzUxODI3MDYwLCJleHAiOjE3NTE5MTM0NjB9.4qMiJhSnSpKEuhoEcqDtxjK2UKX6DltuBQHymF9NqMA';

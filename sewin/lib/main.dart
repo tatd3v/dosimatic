@@ -8,7 +8,9 @@ import 'screens/users_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/reset_password_form_screen.dart';
 import 'screens/signature_demo_screen.dart';
+import 'screens/profile_screen.dart';
 import 'services/auth_guard.dart';
+import 'services/global_error_service.dart';
 import 'dart:html' as html;
 import 'dart:async';
 
@@ -45,6 +47,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: navigatorKey,
+      scaffoldMessengerKey: GlobalErrorService.scaffoldMessengerKey,
       title: 'Contact Manager',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
@@ -52,30 +55,33 @@ class MyApp extends StatelessWidget {
       ),
       initialRoute: '/login',
       routes: {
-        '/': (context) => const AuthGuard(
+        '/': (context) => AuthGuard(
               child: ContactListScreen(version: 0, title: 'Contactos'),
             ),
-        '/users': (context) => const AuthGuard(
+        '/users': (context) => AuthGuard(
               child: UsersScreen(),
             ),
-        '/documentos': (context) => const AuthGuard(
+        '/documentos': (context) => AuthGuard(
               child: DocumentosPage(),
             ),
-        '/contact1': (context) => const AuthGuard(
+        '/contact1': (context) => AuthGuard(
               child: ContactListScreen1(),
             ),
-        '/contact2': (context) => const AuthGuard(
+        '/contact2': (context) => AuthGuard(
               child: ContactListScreen2(),
             ),
-        '/contact3': (context) => const AuthGuard(
+        '/contact3': (context) => AuthGuard(
               child: ContactListScreen3(),
             ),
-        '/login': (context) => const LoginScreen(),
+        '/login': (context) => LoginScreen(),
         '/reset-password': (context) {
           final token = ModalRoute.of(context)?.settings.arguments as String?;
           return ResetPasswordFormScreen(token: token ?? '');
         },
         '/signature-demo': (context) => const SignatureDemoScreen(),
+        '/profile': (context) => AuthGuard(
+              child: ProfileScreen(),
+            ),
       },
     );
   }

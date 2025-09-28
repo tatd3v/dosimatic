@@ -1,7 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const DocumentoController = require('../controllers/documentoController');
-const { uploadDocumentFiles, handleMulterError } = require('../middleware/upload');
+const {
+  uploadDocumentFiles,
+  handleMulterError
+} = require('../middleware/upload');
 
 /**
  * @swagger
@@ -110,7 +113,12 @@ const { uploadDocumentFiles, handleMulterError } = require('../middleware/upload
  *       500:
  *         description: Error interno del servidor
  */
-router.post('/', uploadDocumentFiles, handleMulterError, DocumentoController.create);
+router.post(
+  '/',
+  uploadDocumentFiles,
+  handleMulterError,
+  DocumentoController.create
+);
 
 /**
  * @swagger
@@ -120,15 +128,20 @@ router.post('/', uploadDocumentFiles, handleMulterError, DocumentoController.cre
  *     tags: [Documentos]
  *     parameters:
  *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Filtrar por código y nombre simultáneamente
+ *       - in: query
  *         name: codigo
  *         schema:
  *           type: string
- *         description: Filtrar por código
+ *         description: Filtrar por código específico
  *       - in: query
  *         name: nombre
  *         schema:
  *           type: string
- *         description: Filtrar por nombre
+ *         description: Filtrar por nombre específico
  *       - in: query
  *         name: gestion_id
  *         schema:
@@ -253,7 +266,12 @@ router.get('/:id', DocumentoController.getById);
  *       500:
  *         description: Error interno del servidor
  */
-router.put('/:id', uploadDocumentFiles, handleMulterError, DocumentoController.update);
+router.put(
+  '/:id',
+  uploadDocumentFiles,
+  handleMulterError,
+  DocumentoController.update
+);
 
 /**
  * @swagger
@@ -421,11 +439,52 @@ router.patch('/:id/rechazar', DocumentoController.rechazar);
  * @swagger
  * /api/documentos/pendientes/revision:
  *   get:
- *     summary: Obtener documentos pendientes de revisión
+ *     summary: Obtener documentos pendientes de revisión con paginación
  *     tags: [Documentos]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Número de página
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Límite de resultados por página
  *     responses:
  *       200:
- *         description: Lista de documentos pendientes de revisión
+ *         description: Lista de documentos pendientes de revisión con paginación
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Documento'
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     pages:
+ *                       type: integer
+ *                     currentPage:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     offset:
+ *                       type: integer
+ *                     hasNext:
+ *                       type: boolean
+ *                     hasPrev:
+ *                       type: boolean
  *       500:
  *         description: Error interno del servidor
  */
@@ -435,15 +494,59 @@ router.get('/pendientes/revision', DocumentoController.getPendientesRevision);
  * @swagger
  * /api/documentos/pendientes/aprobacion:
  *   get:
- *     summary: Obtener documentos pendientes de aprobación
+ *     summary: Obtener documentos pendientes de aprobación con paginación
  *     tags: [Documentos]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Número de página
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Límite de resultados por página
  *     responses:
  *       200:
- *         description: Lista de documentos pendientes de aprobación
+ *         description: Lista de documentos pendientes de aprobación con paginación
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Documento'
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     pages:
+ *                       type: integer
+ *                     currentPage:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     offset:
+ *                       type: integer
+ *                     hasNext:
+ *                       type: boolean
+ *                     hasPrev:
+ *                       type: boolean
  *       500:
  *         description: Error interno del servidor
  */
-router.get('/pendientes/aprobacion', DocumentoController.getPendientesAprobacion);
+router.get(
+  '/pendientes/aprobacion',
+  DocumentoController.getPendientesAprobacion
+);
 
 /**
  * @swagger

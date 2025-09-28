@@ -1,10 +1,13 @@
 import 'dart:convert' show json, base64Url, utf8;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sewin/global/global_constantes.dart';
+import 'package:sewin/services/logger_service.dart';
 
 class AuthService {
-  static const String baseUrl = 'http://localhost:3500/api';
+  static String get baseUrl => '${Constants.serverapp}/api';
   static const String tokenKey = 'auth_token';
+  static const String userDataKey = 'user_data';
 
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
@@ -20,15 +23,26 @@ class AuthService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final token = data['token'];
-        if (token != null) {
+        final user = data['user']; // Get user data from login response
+
+        if (token != null && user != null) {
+          // Save token and user data to shared preferences
           await _saveToken(token);
+          await _saveUserData(user);
+
           return {
             'success': true,
-            'message': 'Login successful',
-            'token': token
+            'message': 'Login exitoso',
+            'token': token,
+            'user': user,
+          };
+        } else {
+          Logger.w('No token or user data received from server');
+          return {
+            'success': false,
+            'message': 'Error: Datos de usuario incompletos',
           };
         }
-        return {'success': false, 'message': 'No token received'};
       } else {
         try {
           final error = json.decode(response.body);
@@ -151,6 +165,7 @@ class AuthService {
 
   Future<void> logout() async {
     await _removeToken();
+    await _removeUserData();
   }
 
   Future<String?> getToken() async {
@@ -163,60 +178,121 @@ class AuthService {
     await prefs.setString(tokenKey, token);
   }
 
+  Future<void> _saveUserData(Map<String, dynamic> userData) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(userDataKey, json.encode(userData));
+  }
+
   Future<void> _removeToken() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(tokenKey);
   }
 
-  Future<bool> isAuthenticated() async {
-    final token = await getToken();
-    print('DEBUG AuthService: Token obtenido: ${token != null ? "SÍ" : "NO"}');
+  Future<void> _removeUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(userDataKey);
+  }
 
+  /// Gets the current user data from storage or token
+  /// Returns null if no valid user session exists
+  Future<Map<String, dynamic>?> getCurrentUser() async {
+    // First try to get token
+    final token = await getToken();
     if (token == null) {
-      print('DEBUG AuthService: No hay token, retornando false');
-      return false;
+      return null;
     }
 
-    // Verificar si el token no ha expirado
+    // Check if we have cached user data
+    final prefs = await SharedPreferences.getInstance();
+    final storedUserData = prefs.getString(userDataKey);
+
+    if (storedUserData != null) {
+      try {
+        final userData = json.decode(storedUserData) as Map<String, dynamic>;
+        return _formatUserData(userData);
+      } catch (e) {}
+    }
+
+    // Fall back to extracting from token
     try {
       final tokenParts = token.split('.');
-      print('DEBUG AuthService: Token tiene ${tokenParts.length} partes');
-
       if (tokenParts.length != 3) {
-        print('DEBUG AuthService: Token inválido (no tiene 3 partes)');
-        return false;
+        return null;
       }
 
       final payload = json.decode(
-        utf8.decode(
-          base64Url.decode(
-            base64Url.normalize(tokenParts[1]),
-          ),
-        ),
-      );
+        utf8.decode(base64Url.decode(base64Url.normalize(tokenParts[1]))),
+      ) as Map<String, dynamic>?;
 
-      print('DEBUG AuthService: Payload decodificado: $payload');
-
-      final exp = payload['exp'];
-      print('DEBUG AuthService: Expiración del token: $exp');
-
-      if (exp == null) {
-        print('DEBUG AuthService: Token sin fecha de expiración');
-        return false;
+      if (payload == null) {
+        return null;
       }
 
-      final expirationDate = DateTime.fromMillisecondsSinceEpoch(exp * 1000);
-      final now = DateTime.now();
-      final isValid = now.isBefore(expirationDate);
-
-      print('DEBUG AuthService: Fecha actual: $now');
-      print('DEBUG AuthService: Fecha expiración: $expirationDate');
-      print('DEBUG AuthService: Token válido: $isValid');
-
-      return isValid;
+      return _getUserDataFromToken(payload);
     } catch (e) {
-      print('DEBUG AuthService: Error al validar token: $e');
-      return false;
+      return null;
     }
+  }
+
+  /// Formats user data into a consistent format
+  Map<String, dynamic> _formatUserData(Map<String, dynamic> userData) {
+    try {
+      final formattedData = {
+        'id': userData['id'],
+        'email': userData['email'] ?? '',
+        'nombre': userData['nombre'] ?? 'Usuario',
+        'rol': userData['rol'] ?? 'user',
+        'fecha_creacion':
+            userData['fecha_creacion'] ?? DateTime.now().toIso8601String(),
+      };
+
+      return formattedData;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Map<String, dynamic> _getUserDataFromToken(Map<String, dynamic> payload) {
+    final email = payload['email']?.toString() ?? '';
+
+    // El JWT token solo contiene: {id, email, role}
+    // NO contiene nombre, así que usamos el email como fallback
+    String nombre;
+    if (payload.containsKey('nombre') && payload['nombre'] != null) {
+      nombre = payload['nombre'].toString();
+    } else if (email.isNotEmpty) {
+      // Extraer el nombre del email (parte antes de la @) como fallback
+      nombre = email.split('@').first;
+      // Capitalizar primera letra
+      if (nombre.isNotEmpty) {
+        nombre = nombre[0].toUpperCase() +
+            (nombre.length > 1 ? nombre.substring(1) : '');
+      } else {
+        nombre = 'Usuario';
+      }
+    } else {
+      nombre = 'Usuario';
+    }
+
+    // Buscar el rol en diferentes campos posibles
+    String rol;
+    if (payload.containsKey('rol')) {
+      rol = payload['rol'];
+    } else if (payload.containsKey('role')) {
+      rol = payload['role'];
+    } else {
+      rol = 'user';
+    }
+
+    // Using fallback user data from token
+
+    return {
+      'id': payload['id'],
+      'email': email,
+      'nombre': nombre,
+      'rol': rol,
+      'fecha_creacion':
+          payload['fecha_creacion'] ?? DateTime.now().toIso8601String(),
+    };
   }
 }

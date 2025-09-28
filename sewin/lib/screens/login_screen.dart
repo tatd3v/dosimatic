@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
-import 'contact_list_screen.dart';
 import 'reset_password_screen.dart';
 
 // Custom painter for diagonal background
@@ -300,14 +299,10 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _isLoading = false);
 
       if (!mounted) return;
-      print('Login result token actual: ' +
-          (result['token']?.toString() ?? 'null'));
       if (result['success'] && result['token'] != null) {
         // El token ya se guarda automáticamente en el AuthService
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const ContactListScreen()),
-        );
+        // Navigate to root route which will show ContactListScreen through AuthGuard
+        Navigator.pushReplacementNamed(context, '/');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(result['message'])),

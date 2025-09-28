@@ -1,68 +1,78 @@
 import 'package:flutter/material.dart';
+import 'profile_widget.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
 
+  Widget _buildDrawerItem({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required String route,
+    bool usePushReplacement = true,
+  }) {
+    return ListTile(
+      leading: Icon(icon, color: Colors.white70),
+      title: Text(title, style: const TextStyle(color: Colors.white)),
+      onTap: () {
+        if (usePushReplacement) {
+          Navigator.pushReplacementNamed(context, route);
+        } else {
+          Navigator.pushNamed(context, route);
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Drawer(
+      backgroundColor:
+          const Color(0xFF2C3E50), // Match the dark blue-gray color
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          const DrawerHeader(
-            decoration: BoxDecoration(
-              color: Colors.blue,
-            ),
-            child: Text(
-              'Menu',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-              ),
-            ),
+          const SizedBox(
+            height: 120,
+            child: ProfileWidget(),
           ),
-          ListTile(
-            leading: const Icon(Icons.people),
-            title: const Text('Usuarios'),
-            onTap: () {
-              Navigator.pushReplacementNamed(context, '/users');
-            },
+          _buildDrawerItem(
+            context: context,
+            icon: Icons.people,
+            title: 'Usuarios',
+            route: '/users',
           ),
-          ListTile(
-            leading: const Icon(Icons.article),
-            title: const Text('Documentos'),
-            onTap: () {
-              Navigator.pushReplacementNamed(context, '/documentos');
-            },
+          _buildDrawerItem(
+            context: context,
+            icon: Icons.article,
+            title: 'Documentos',
+            route: '/documentos',
           ),
-          ListTile(
-            leading: const Icon(Icons.contacts),
-            title: const Text('Contactos 1'),
-            onTap: () {
-              Navigator.pushReplacementNamed(context, '/contact1');
-            },
+          _buildDrawerItem(
+            context: context,
+            icon: Icons.contacts,
+            title: 'Contactos 1',
+            route: '/contact1',
           ),
-          ListTile(
-            leading: const Icon(Icons.contacts),
-            title: const Text('Contactos 2'),
-            onTap: () {
-              Navigator.pushReplacementNamed(context, '/contact2');
-            },
+          _buildDrawerItem(
+            context: context,
+            icon: Icons.contacts,
+            title: 'Contactos 2',
+            route: '/contact2',
           ),
-          ListTile(
-            leading: const Icon(Icons.contacts),
-            title: const Text('Contactos 3'),
-            onTap: () {
-              Navigator.pushReplacementNamed(context, '/contact3');
-            },
+          _buildDrawerItem(
+            context: context,
+            icon: Icons.contacts,
+            title: 'Contactos 3',
+            route: '/contact3',
           ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.draw),
-            title: const Text('Demo Firma Digital'),
-            onTap: () {
-              Navigator.pushNamed(context, '/signature-demo');
-            },
+          const Divider(color: Colors.white24),
+          _buildDrawerItem(
+            context: context,
+            icon: Icons.draw,
+            title: 'Demo Firma Digital',
+            route: '/signature-demo',
+            usePushReplacement: false,
           ),
         ],
       ),

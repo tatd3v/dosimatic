@@ -13,21 +13,31 @@ class Documento {
       convencion,
       archivo_fuente,
       archivo_pdf,
-      usuario_creador
+      usuario_creador,
+      vinculado_a
     } = documentoData;
 
     const sql = `
       INSERT INTO documentos (
         codigo, nombre, descripcion, gestion_id, convencion, 
-        archivo_fuente, archivo_pdf, usuario_creador,
+        archivo_fuente, archivo_pdf, usuario_creador, vinculado_a,
         version, estado
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, 'pendiente_aprobacion')
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `;
 
     const values = [
-      codigo, nombre, descripcion, gestion_id, convencion,
-      archivo_fuente, archivo_pdf, usuario_creador
+      codigo,
+      nombre,
+      descripcion,
+      gestion_id,
+      convencion,
+      archivo_fuente,
+      archivo_pdf,
+      usuario_creador,
+      vinculado_a,
+      1, // version
+      'pendiente_aprobacion' // estado
     ];
 
     const result = await query(sql, values);
@@ -41,14 +51,14 @@ class Documento {
     const sql = `
       SELECT d.*, 
              g.nombre as gestion_nombre,
-             uc.name as creador_nombre,
-             ur.name as revisor_nombre,
-             ua.name as aprobador_nombre
+             uc.nombre as creador_nombre,
+             ur.nombre as revisor_nombre,
+             ua.nombre as aprobador_nombre
       FROM documentos d
       LEFT JOIN gestiones g ON d.gestion_id = g.id
-      LEFT JOIN users uc ON d.usuario_creador = uc.id
-      LEFT JOIN users ur ON d.usuario_revisor = ur.id
-      LEFT JOIN users ua ON d.usuario_aprobador = ua.id
+      LEFT JOIN usuarios uc ON d.usuario_creador = uc.id
+      LEFT JOIN usuarios ur ON d.usuario_revisor = ur.id
+      LEFT JOIN usuarios ua ON d.usuario_aprobador = ua.id
       WHERE d.id = $1
     `;
 
@@ -60,51 +70,95 @@ class Documento {
    * Obtener todos los documentos con filtros opcionales
    */
   static async findAll(filters = {}) {
-    let sql = `
-      SELECT d.*, 
-             g.nombre as gestion_nombre,
-             uc.name   as creador_nombre,
-             ur.name as revisor_nombre,
-             ua.name as aprobador_nombre
+    // Base query for counting total documents
+    let countSql = `
+      SELECT COUNT(*) as total
       FROM documentos d
-      LEFT JOIN gestiones g ON d.gestion_id = g.id
-      LEFT JOIN users uc ON d.usuario_creador = uc.id
-      LEFT JOIN users ur ON d.usuario_revisor = ur.id
-      LEFT JOIN users ua ON d.usuario_aprobador = ua.id
-      WHERE 1=1
+      WHERE d.estado != 'eliminado'
     `;
 
+    // Base query for fetching documents
+    let sql = `
+      SELECT d.*,
+             g.nombre as gestion_nombre,
+             uc.nombre as creador_nombre,
+             ur.nombre as revisor_nombre,
+             ua.nombre as aprobador_nombre
+      FROM documentos d
+      LEFT JOIN gestiones g ON d.gestion_id = g.id
+      LEFT JOIN usuarios uc ON d.usuario_creador = uc.id
+      LEFT JOIN usuarios ur ON d.usuario_revisor = ur.id
+      LEFT JOIN usuarios ua ON d.usuario_aprobador = ua.id
+      WHERE d.estado != 'eliminado'
+    `;
+
+    const countValues = [];
     const values = [];
     let paramCount = 0;
 
-    // Aplicar filtros
-    if (filters.codigo) {
-      paramCount++;
-      sql += ` AND d.codigo ILIKE $${paramCount}`;
-      values.push(`%${filters.codigo}%`);
-    }
+    // Aplicar filtros para el conteo y la consulta principal
+    if (filters.search) {
+      // Convert search to lowercase once and split into terms
+      const searchTerm = filters.search.toLowerCase();
+      const searchTerms = searchTerm
+        .split(/\s+/)
+        .filter(term => term.trim() !== '');
 
-    if (filters.nombre) {
-      paramCount++;
-      sql += ` AND d.nombre ILIKE $${paramCount}`;
-      values.push(`%${filters.nombre}%`);
+      if (searchTerms.length > 0) {
+        const conditions = searchTerms.map((term, index) => {
+          const paramIndex = paramCount + index + 1;
+          return `(LOWER(d.codigo) LIKE $${paramIndex} OR LOWER(d.nombre) LIKE $${paramIndex})`;
+        });
+
+        countSql += ` AND (${conditions.join(' AND ')})`;
+        sql += ` AND (${conditions.join(' AND ')})`;
+        // Add terms with % wildcards for LIKE
+        searchTerms.forEach(term => {
+          countValues.push(`%${term}%`);
+          values.push(`%${term}%`);
+        });
+        paramCount += searchTerms.length;
+      }
+    } else {
+      // Filtros individuales (mantener compatibilidad)
+      if (filters.codigo) {
+        paramCount++;
+        countSql += ` AND d.codigo ILIKE $${paramCount}`;
+        sql += ` AND d.codigo ILIKE $${paramCount}`;
+        countValues.push(`%${filters.codigo}%`);
+        values.push(`%${filters.codigo}%`);
+      }
+
+      if (filters.nombre) {
+        paramCount++;
+        countSql += ` AND d.nombre ILIKE $${paramCount}`;
+        sql += ` AND d.nombre ILIKE $${paramCount}`;
+        countValues.push(`%${filters.nombre}%`);
+        values.push(`%${filters.nombre}%`);
+      }
     }
 
     if (filters.gestion_id) {
       paramCount++;
+      countSql += ` AND d.gestion_id = $${paramCount}`;
       sql += ` AND d.gestion_id = $${paramCount}`;
+      countValues.push(filters.gestion_id);
       values.push(filters.gestion_id);
     }
 
     if (filters.convencion) {
       paramCount++;
+      countSql += ` AND d.convencion = $${paramCount}`;
       sql += ` AND d.convencion = $${paramCount}`;
+      countValues.push(filters.convencion);
       values.push(filters.convencion);
     }
 
     if (filters.estado) {
       paramCount++;
+      countSql += ` AND d.estado = $${paramCount}`;
       sql += ` AND d.estado = $${paramCount}`;
+      countValues.push(filters.estado);
       values.push(filters.estado);
     }
 
@@ -124,8 +178,28 @@ class Documento {
       values.push(parseInt(filters.offset));
     }
 
-    const result = await query(sql, values);
-    return result.rows;
+    // Execute both queries in parallel for better performance
+    const [countResult, dataResult] = await Promise.all([
+      query(countSql, countValues),
+      query(sql, values)
+    ]);
+
+    const total = parseInt(countResult.rows[0].total);
+    const documents = dataResult.rows;
+
+    const limit = filters.limit || 10;
+    const offset = filters.offset || 0;
+    const currentPage = Math.floor(offset / limit) + 1;
+    const pages = Math.ceil(total / limit);
+
+    return {
+      documents: documents,
+      total: total,
+      pages: pages,
+      currentPage: currentPage,
+      limit: limit,
+      offset: offset
+    };
   }
 
   /**
@@ -133,17 +207,21 @@ class Documento {
    */
   static async update(id, updateData, usuario_id) {
     const client = await getClient();
-    
+
     try {
       await client.query('BEGIN');
 
       // Obtener documento actual
-      const currentDoc = await client.query('SELECT * FROM documentos WHERE id = $1', [id]);
+      const currentDoc = await client.query(
+        'SELECT * FROM documentos WHERE id = $1',
+        [id]
+      );
       if (currentDoc.rows.length === 0) {
         throw new Error('Documento no encontrado');
       }
 
       const current = currentDoc.rows[0];
+      console.log('Current document:', current);
 
       // Guardar en histórico
       const historicoSql = `
@@ -154,15 +232,24 @@ class Documento {
       `;
 
       await client.query(historicoSql, [
-        current.id, current.version, current.archivo_fuente, current.archivo_pdf,
-        current.estado, usuario_id
+        current.id,
+        current.version,
+        current.archivo_fuente,
+        current.archivo_pdf,
+        current.estado,
+        usuario_id
       ]);
 
-      // Actualizar documento principal
+      // Only update basic document fields (no signing fields)
       const {
-        nombre, descripcion, gestion_id, convencion,
-        archivo_fuente, archivo_pdf, estado,
-        is_signed, signed_file_path, signer_name, signed_at, usuario_firmante
+        nombre,
+        descripcion,
+        gestion_id,
+        convencion,
+        archivo_fuente,
+        archivo_pdf,
+        estado,
+        vinculado_a
       } = updateData;
 
       const updateSql = `
@@ -174,27 +261,26 @@ class Documento {
           archivo_fuente = COALESCE($5, archivo_fuente),
           archivo_pdf = COALESCE($6, archivo_pdf),
           estado = COALESCE($7, estado),
-          is_signed = COALESCE($8, is_signed),
-          signed_file_path = COALESCE($9, signed_file_path),
-          signer_name = COALESCE($10, signer_name),
-          signed_at = COALESCE($11, signed_at),
-          usuario_firmante = COALESCE($12, usuario_firmante),
-          version = version + 1,
+          vinculado_a = COALESCE($8, vinculado_a),
           fecha_actualizacion = CURRENT_TIMESTAMP
-        WHERE id = $13
+        WHERE id = $9
         RETURNING *
       `;
 
       const result = await client.query(updateSql, [
-        nombre, descripcion, gestion_id, convencion,
-        archivo_fuente, archivo_pdf, estado,
-        is_signed, signed_file_path, signer_name, signed_at, usuario_firmante,
+        nombre,
+        descripcion,
+        gestion_id,
+        convencion,
+        archivo_fuente,
+        archivo_pdf,
+        estado,
+        vinculado_a,
         id
       ]);
 
       await client.query('COMMIT');
       return result.rows[0];
-
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -204,10 +290,13 @@ class Documento {
   }
 
   /**
-   * Eliminar documento
+   * Eliminar documento (soft delete)
    */
   static async delete(id) {
-    const result = await query('DELETE FROM documentos WHERE id = $1 RETURNING *', [id]);
+    const result = await query(
+      'UPDATE documentos SET estado = $1, fecha_actualizacion = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+      ['eliminado', id]
+    );
     return result.rows[0];
   }
 
@@ -219,7 +308,7 @@ class Documento {
       SELECT h.*, 
              u.nombre as modificado_por
       FROM historico_documentos h
-      LEFT JOIN users u ON h.usuario_id = u.id
+      LEFT JOIN usuarios u ON h.usuario_id = u.id
       WHERE h.documento_id = $1
       ORDER BY h.fecha DESC
     `;
@@ -242,13 +331,15 @@ class Documento {
     `;
 
     const result = await query(sql, [usuario_revisor, id]);
-    
+
     if (result.rows.length === 0) {
-      throw new Error('Documento no encontrado o no está en estado pendiente de revisión');
+      throw new Error(
+        'Documento no encontrado o no está en estado pendiente de revisión'
+      );
     }
 
     // TODO: Aquí se podría agregar lógica para guardar comentarios en una tabla separada
-    
+
     return result.rows[0];
   }
 
@@ -266,9 +357,11 @@ class Documento {
     `;
 
     const result = await query(sql, [usuario_aprobador, id]);
-    
+
     if (result.rows.length === 0) {
-      throw new Error('Documento no encontrado o no está en estado pendiente de aprobación');
+      throw new Error(
+        'Documento no encontrado o no está en estado pendiente de aprobación'
+      );
     }
 
     return result.rows[0];
@@ -287,54 +380,118 @@ class Documento {
     `;
 
     const result = await query(sql, [id]);
-    
+
     if (result.rows.length === 0) {
       throw new Error('Documento no encontrado');
     }
 
     // TODO: Aquí se podría agregar lógica para guardar comentarios de rechazo
-    
+
     return result.rows[0];
   }
 
   /**
-   * Obtener documentos pendientes de revisión
+   * Obtener documentos pendientes de revisión con paginación
    */
-  static async getPendientesRevision() {
+  static async getPendientesRevision(page = 1, limit = 10) {
+    const offset = (page - 1) * limit;
+    
+    // Query para obtener el total de documentos
+    const countSql = `
+      SELECT COUNT(*) as total
+      FROM documentos d
+      WHERE d.estado = 'pendiente_revision'
+    `;
+    
+    // Query para obtener los documentos paginados
     const sql = `
       SELECT d.*, 
              g.nombre as gestion_nombre,
-             uc.name as creador_nombre
+             uc.nombre as creador_nombre
       FROM documentos d
       LEFT JOIN gestiones g ON d.gestion_id = g.id
-      LEFT JOIN users uc ON d.usuario_creador = uc.id
+      LEFT JOIN usuarios uc ON d.usuario_creador = uc.id
       WHERE d.estado = 'pendiente_revision'
       ORDER BY d.fecha_creacion ASC
+      LIMIT $1 OFFSET $2
     `;
 
-    const result = await query(sql);
-    return result.rows;
+    const [countResult, dataResult] = await Promise.all([
+      query(countSql),
+      query(sql, [limit, offset])
+    ]);
+
+    const total = parseInt(countResult.rows[0].total);
+    const pages = Math.ceil(total / limit);
+    const currentPage = page;
+    const hasNext = page < pages;
+    const hasPrev = page > 1;
+
+    return {
+      data: dataResult.rows,
+      pagination: {
+        total,
+        pages,
+        currentPage,
+        limit,
+        offset,
+        hasNext,
+        hasPrev
+      }
+    };
   }
 
   /**
-   * Obtener documentos pendientes de aprobación
+   * Obtener documentos pendientes de aprobación con paginación
    */
-  static async getPendientesAprobacion() {
+  static async getPendientesAprobacion(page = 1, limit = 10) {
+    const offset = (page - 1) * limit;
+    
+    // Query para obtener el total de documentos
+    const countSql = `
+      SELECT COUNT(*) as total
+      FROM documentos d
+      WHERE d.estado = 'pendiente_aprobacion'
+    `;
+    
+    // Query para obtener los documentos paginados
     const sql = `
       SELECT d.*, 
              g.nombre as gestion_nombre,
-             uc.name as creador_nombre,
-             ur.name as revisor_nombre
+             uc.nombre as creador_nombre,
+             ur.nombre as revisor_nombre
       FROM documentos d
       LEFT JOIN gestiones g ON d.gestion_id = g.id
-      LEFT JOIN users uc ON d.usuario_creador = uc.id
-      LEFT JOIN users ur ON d.usuario_revisor = ur.id
+      LEFT JOIN usuarios uc ON d.usuario_creador = uc.id
+      LEFT JOIN usuarios ur ON d.usuario_revisor = ur.id
       WHERE d.estado = 'pendiente_aprobacion'
       ORDER BY d.fecha_creacion ASC
+      LIMIT $1 OFFSET $2
     `;
 
-    const result = await query(sql);
-    return result.rows;
+    const [countResult, dataResult] = await Promise.all([
+      query(countSql),
+      query(sql, [limit, offset])
+    ]);
+
+    const total = parseInt(countResult.rows[0].total);
+    const pages = Math.ceil(total / limit);
+    const currentPage = page;
+    const hasNext = page < pages;
+    const hasPrev = page > 1;
+
+    return {
+      data: dataResult.rows,
+      pagination: {
+        total,
+        pages,
+        currentPage,
+        limit,
+        offset,
+        hasNext,
+        hasPrev
+      }
+    };
   }
 
   /**
